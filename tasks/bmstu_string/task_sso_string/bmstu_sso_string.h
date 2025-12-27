@@ -2,120 +2,134 @@
 
 #include <exception>
 #include <iostream>
+#include <initializer_list>
+#include <stdexcept>
+#include <algorithm>
 
-namespace bmstu
-{
+namespace bmstu {
 template <typename T>
-class basic_string;
+class basic_string {
+private:
+    static constexpr size_t SSO_CAPACITY = (sizeof(T*) + 2 * sizeof(size_t)) / sizeof(T) - 1;
+
+    struct LongString {
+        T* ptr;
+        size_t size;
+        size_t capacity;
+    };
+
+    struct ShortString {
+        T buffer[SSO_CAPACITY + 1];
+        unsigned char size;
+    };
+
+    union Data {
+        LongString l;
+        ShortString s;
+    };
+
+    Data data_;
+    bool is_long_;
+
+    T* get_ptr() { return is_long_ ? data_.l.ptr : data_.s.buffer; }
+    const T* get_ptr() const { return is_long_ ? data_.l.ptr : data_.s.buffer; }
+
+public:
+    basic_string() : is_long_(false) {
+        data_.s.size = 0;
+        data_.s.buffer[0] = 0;
+    }
+
+    basic_string(size_t size) : is_long_(false) {
+        if (size > SSO_CAPACITY) {
+            is_long_ = true;
+            data_.l.ptr = new T[size + 1];
+            data_.l.size = size;
+            data_.l.capacity = size;
+            for (size_t i = 0; i < size; ++i) data_.l.ptr[i] = static_cast<T>(' ');
+            data_.l.ptr[size] = 0;
+        } else {
+            data_.s.size = static_cast<unsigned char>(size);
+            for (size_t i = 0; i < size; ++i) data_.s.buffer[i] = static_cast<T>(' ');
+            data_.s.buffer[size] = 0;
+        }
+    }
+
+    basic_string(const T* c_str) : is_long_(false) {
+        size_t len = strlen_(c_str);
+        if (len > SSO_CAPACITY) {
+            is_long_ = true;
+            data_.l.ptr = new T[len + 1];
+            for (size_t i = 0; i <= len; ++i) data_.l.ptr[i] = c_str[i];
+            data_.l.size = len;
+            data_.l.capacity = len;
+        } else {
+            for (size_t i = 0; i <= len; ++i) data_.s.buffer[i] = c_str[i];
+            data_.s.size = static_cast<unsigned char>(len);
+        }
+    }
+
+    basic_string(const basic_string& other) : is_long_(other.is_long_) {
+        if (is_long_) {
+            data_.l.ptr = new T[other.data_.l.capacity + 1];
+            data_.l.size = other.data_.l.size;
+            data_.l.capacity = other.data_.l.capacity;
+            for (size_t i = 0; i <= data_.l.size; ++i) data_.l.ptr[i] = other.data_.l.ptr[i];
+        } else {
+            data_.s = other.data_.s;
+        }
+    }
+
+    basic_string(basic_string&& dying) noexcept : is_long_(dying.is_long_), data_(dying.data_) {
+        dying.is_long_ = false;
+        dying.data_.s.size = 0;
+        dying.data_.s.buffer[0] = 0;
+    }
+
+    ~basic_string() {
+        if (is_long_) delete[] data_.l.ptr;
+    }
+
+    const T* c_str() const { return get_ptr(); }
+    size_t size() const { return is_long_ ? data_.l.size : data_.s.size; }
+    size_t capacity() const { return is_long_ ? data_.l.capacity : SSO_CAPACITY; }
+    bool is_using_sso() const { return !is_long_; }
+
+    basic_string& operator=(const basic_string& other) {
+        if (this != &other) {
+            if (is_long_) delete[] data_.l.ptr;
+            is_long_ = other.is_long_;
+            if (is_long_) {
+                data_.l.ptr = new T[other.data_.l.capacity + 1];
+                data_.l.size = other.data_.l.size;
+                data_.l.capacity = other.data_.l.capacity;
+                for (size_t i = 0; i <= data_.l.size; ++i) data_.l.ptr[i] = other.data_.l.ptr[i];
+            } else {
+                data_.s = other.data_.s;
+            }
+        }
+        return *this;
+    }
+
+    T& operator[](size_t index) noexcept { return get_ptr()[index]; }
+
+    template <typename S>
+    friend S& operator<<(S& os, const basic_string& obj) {
+        os << obj.c_str();
+        return os;
+    }
+
+private:
+    static size_t strlen_(const T* str) {
+        size_t len = 0;
+        while (str && str[len]) ++len;
+        return len;
+    }
+
+    void clean_() {
+        if (is_long_) delete[] data_.l.ptr;
+    }
+};
 
 using string = basic_string<char>;
-using wstring = basic_string<wchar_t>;
-using u16string = basic_string<char16_t>;
-using u32string = basic_string<char32_t>;
-
-template <typename T>
-class basic_string
-{
-   private:
-	static constexpr size_t SSO_CAPACITY =
-		(sizeof(T*) + sizeof(size_t) + sizeof(size_t)) / sizeof(T) - 1;
-
-	struct LongString
-	{
-		T* ptr;
-		size_t size;
-		size_t capacity;
-	};
-
-	struct ShortString
-	{
-		T buffer[SSO_CAPACITY + 1];
-		unsigned char size;
-	};
-
-	union Data
-	{
-		LongString long_str;
-		ShortString short_str;
-	};
-
-	Data data_;
-	bool is_long_;
-
-	bool is_long() const { return false; }
-
-	T* get_ptr() { return nullptr; }
-
-	const T* get_ptr() const { return nullptr; }
-
-	size_t get_size() const { return 0; }
-
-	size_t get_capacity() const { return 0; }
-
-   public:
-	basic_string() {}
-
-	basic_string(size_t size) {}
-
-	basic_string(std::initializer_list<T> il) {}
-
-	basic_string(const T* c_str) {}
-
-	basic_string(const basic_string& other) {}
-
-	basic_string(basic_string&& dying) noexcept {}
-
-	~basic_string() {}
-
-	const T* c_str() const { return nullptr; }
-
-	size_t size() const { return 0; }
-
-	bool is_using_sso() const { return false; }
-
-	size_t capacity() const { return 0; }
-
-	basic_string& operator=(basic_string&& other) noexcept { return *this; }
-
-	basic_string& operator=(const T* c_str) { return *this; }
-
-	basic_string& operator=(const basic_string& other) { return *this; }
-
-	friend basic_string<T> operator+(const basic_string<T>& left,
-									 const basic_string<T>& right)
-	{
-		return {};
-	}
-
-	template <typename S>
-	friend S& operator<<(S& os, const basic_string& obj)
-	{
-		return os;
-	}
-
-	template <typename S>
-	friend S& operator>>(S& is, basic_string& obj)
-	{
-		return is;
-	}
-
-	basic_string& operator+=(const basic_string& other) { return *this; }
-
-	basic_string& operator+=(T symbol) { return *this; }
-
-	T& operator[](size_t index) noexcept
-	{
-		static T dummy;
-		return dummy;
-	}
-
-	T& at(size_t index) { throw std::out_of_range("Wrong index"); }
-
-	T* data() { return nullptr; }
-
-   private:
-	static size_t strlen_(const T* str) { return 0; }
-
-	void clean_() {}
-};
-}  // namespace bmstu
+}
